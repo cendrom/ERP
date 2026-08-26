@@ -13,7 +13,10 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,sans-serif;background:#f4f5f7;color:#1a1a1a;min-height:100vh}
 
-/* LOGIN */
+/* LOGIN
+   MVP — Minimum Viable Product
+
+En español: Producto Mínimo Viable.*/
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1e3a5f 0%,#1d4ed8 100%)}
 .login-card{background:#fff;border-radius:16px;padding:36px 32px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.18)}
 .login-logo{text-align:center;margin-bottom:28px}
@@ -559,6 +562,10 @@ input:checked + .slider:before{-webkit-transform:translateX(14px);-ms-transform:
 // ============================================================
 // DATA Y CONFIGURACIÓN DE PERMISOS MUTABLES
 // ============================================================
+
+// Acá están los usuarios de prueba del sistema. Cada uno tiene nombre, departamento,
+// rol y contraseña. El rol es la pieza clave: determina qué puede hacer esa persona
+// dentro de la aplicación. En producción real esto viviría en una base de datos segura.
 const USERS = {
   admin:      {pass:'admin',     nombre:'Admin Sistema',   rol:'admin',      dept:'Administración'},
   logistica:  {pass:'logistica', nombre:'Nicolás León',    rol:'logistica',  dept:'Logística'},
@@ -571,6 +578,10 @@ const USERS = {
 };
 
 // Matriz de permisos modificable en tiempo real por el Administrador
+
+// Esta es la tabla de permisos. Relaciona cada rol con las acciones que puede ejecutar.
+// Si un permiso no está en true para un rol, la función can() lo bloquea.
+// Así nunca le doy a nadie más acceso del que necesita.
 let PERMISOS = {
   logistica: {
     pages: ['dashboard','notificaciones','recepcion','stock','etiquetas','reportes','calidad','auditorias','procedimientos','compras','seguimiento'], // Logística ahora puede "ver" certificados
@@ -657,6 +668,11 @@ let PERMISOS = {
   }
 };
 
+
+// El objeto DB es la base de datos del MVP. No hay MySQL ni servidor externo:
+// todo vive aquí, en memoria del navegador, mientras la sesión esté abierta.
+// Cada propiedad es un arreglo de objetos: lotes, ops, compras, certificados, etc.
+// Al recargar la página vuelve a este estado inicial. Eso es una limitación documentada.
 const DB = {
   lotes: [
     {id:'l1',numero:'L-2026-0001',tipo:'Tubo acero',codigo:'TUB-001',desc:'Tubo acero estructural',longitud:6000,diametro:60,espesor:3.2,colada:'C-2026',cantidad_recibida:50,cantidad_disponible:50,ubicacion:'Bodega A - Estante 3',fecha:'2026-04-20',proveedor:'Proveedor Alfa',estado:'en_cuarentena',op_id:'op1',op_numero:'OP-1001'},
@@ -796,6 +812,9 @@ const DB = {
 };
 
 // Datos para la Casilla Creativa de Procedimientos (SOP)
+
+// Manuales de procedimiento que el sistema puede mostrar a cada área.
+// Son los SOPs (Standard Operating Procedures) de cada módulo operativo.
 const PROCEDIMIENTOS = {
   logistica: {
     titulo: "Procedimiento de Recepción y Control de Inventarios (SOP-LOG-01)",
@@ -859,6 +878,10 @@ const PROCEDIMIENTOS = {
   }
 };
 
+
+// currentUser guarda el usuario que está actualmente logueado.
+// currentPerm guarda sus permisos activos. Ambas variables son null hasta que alguien inicia sesión.
+// Son las variables más importantes del sistema: todas las decisiones de acceso las consultan.
 let currentUser = null;
 let currentPerm = null;
 let currentPage = 'dashboard';
@@ -869,6 +892,10 @@ let selectedSopArea = 'logistica';
 // ============================================================
 // AUTH
 // ============================================================
+
+// Esta función se ejecuta cuando el usuario hace clic en "Ingresar".
+// Busca el usuario en USERS, carga sus permisos desde PERMISOS,
+// y llama a startApp() para construir la interfaz personalizada según el rol.
 function doLogin() {
   const u = document.getElementById('login-user').value;
   const p = document.getElementById('login-pass').value;
@@ -894,6 +921,10 @@ function doLogout() {
   document.getElementById('login-pass').value='';
 }
 
+
+// Punto de entrada de la aplicación después del login exitoso.
+// Construye el menú lateral, muestra el avatar del usuario,
+// y navega al dashboard como primera pantalla.
 function startApp() {
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app-wrap').style.display='flex';
@@ -920,6 +951,8 @@ function updateUserUI() {
 
 // ============================================================
 // SIDEBAR (Actualizado con SOP)
+   SIDEBAR la barra de navegación de la izquierda, la que muestra los módulos según el rol
+SOP Standard Operating Procedure = los manuales de procedimiento por área que el sistema puede mostrar
 // ============================================================
 const NAV_ITEMS = [
   {sec:'⚙️ General'},
@@ -950,6 +983,10 @@ const NAV_ITEMS = [
   {id:'usuarios',      label:'👥 Usuarios y Roles',     mob:'👥',          icon:'ti-users'},
 ];
 
+
+// Construye el menú lateral dinámicamente según el rol del usuario.
+// Filtra los ítems de NAV_ITEMS: solo muestra los que el rol tiene permitidos.
+// Por eso cada usuario ve un menú diferente al loguearse.
 function buildSidebar() {
   const nav = document.getElementById('sidebar-nav');
   const isMob = window.innerWidth <= 600;
@@ -1043,13 +1080,25 @@ function topbarAction() {
   else toast('Selecciona una sección con acción disponible');
 }
 
+
+// Función guardiana de acceso. Recibe un string como "canCompras" o "canReleaseLote"
+// y retorna true si el usuario actual tiene ese permiso, false si no.
+// Se usa en toda la interfaz para mostrar u ocultar botones y secciones.
 function can(perm) { return currentPerm && currentPerm[perm] === true; }
+
+// Se llama cuando alguien intenta hacer algo para lo que no tiene permiso.
+// Muestra un toast con el mensaje de acceso denegado.
 function denied() { toast('⛔ Tu rol ('+currentUser.dept+') no tiene permiso para esta acción'); }
 function refreshPage() { renderPage(currentPage); toast('Actualizado'); }
 
 // ============================================================
 // PAGE RENDERER
 // ============================================================
+
+// Esta es la función de navegación central de la SPA.
+// En lugar de recargar la página, reemplaza el contenido del div principal
+// con el HTML generado por la función de plantilla correspondiente a cada módulo.
+// Por eso la aplicación se siente rápida: nunca hay una recarga real.
 function renderPage(page) {
   const c = document.getElementById('app-content');
   switch(page) {
@@ -1077,12 +1126,20 @@ function renderPage(page) {
 // ============================================================
 // HELPERS
 // ============================================================
+
+// Convierte un estado de texto en un badge HTML de color.
+// "disponible" → badge verde, "en_cuarentena" → badge amarillo, "bloqueado" → badge rojo.
+// Hay funciones similares para OPs (opBadge), certificados (certBadge) y máquinas (maqBadge).
 function statusBadge(s) { const m={disponible:'<span class="badge bg">Disponible</span>',en_cuarentena:'<span class="badge by">En cuarentena</span>',bloqueado:'<span class="badge br">Bloqueado</span>'}; return m[s]||`<span class="badge bgr">${s}</span>`; }
 function opBadge(s) { const m={pendiente:'<span class="badge bgr">Pendiente</span>',asignada:'<span class="badge bb">Asignada</span>',en_proceso:'<span class="badge bg">En proceso</span>',pausada:'<span class="badge by">Pausada</span>',completada:'<span class="badge bpu">Completada</span>',bloqueada:'<span class="badge br">Bloqueada</span>'}; return m[s]||`<span class="badge bgr">${s}</span>`; }
 function prioBadge(p) { return {alta:'<span class="badge br">Alta</span>',media:'<span class="badge by">Media</span>',baja:'<span class="badge bgr">Baja</span>'}[p]||p; }
 function certBadge(s) { return {pendiente:'<span class="badge by"><i class="ti ti-clock"></i> Pendiente</span>',validado:'<span class="badge bg"><i class="ti ti-check"></i> Validado</span>',rechazado:'<span class="badge br"><i class="ti ti-x"></i> Rechazado</span>'}[s]||s; }
 function maqBadge(s) { return {operativa:'<span class="badge bg">Operativa</span>',mantenimiento:'<span class="badge by">Mantenimiento</span>',parada:'<span class="badge br">Parada</span>'}[s]||s; }
 
+
+// El semáforo visual de producción. Evalúa el estado de una OP
+// y retorna un emoji de color: 🔴 bloqueada, 🟡 retrasada, 🟢 completada, 🔵 en proceso.
+// Se usa en el dashboard y en el tablero Kanban para dar visibilidad rápida del avance.
 function semaDot(op) {
   // Verificación de retraso en tiempo real (fin estimado < hoy && progreso < 100)
   const esRetrasada = estaOpRetrasada(op);
@@ -1094,6 +1151,9 @@ function semaDot(op) {
   return '<span class="dot dg" style="width:9px;height:9px;display:inline-block;border-radius:50%"></span>';
 }
 
+
+// Calcula si una OP está retrasada comparando la fecha actual con la fecha de fin.
+// Si la fecha actual es mayor a la fecha de fin y la OP no está completada, está retrasada.
 function estaOpRetrasada(op) {
   if (op.estado === 'completada') return false;
   if (!op.fin) return false;
@@ -1103,11 +1163,19 @@ function estaOpRetrasada(op) {
 }
 
 function lockBtn(html, permKey) { return can(permKey) ? html : html.replace(/class="btn/g, 'class="btn btn-locked'); }
+
+// Muestra un mensaje flotante en la pantalla durante ~2.6 segundos.
+// Se usa para confirmaciones ("Guardado"), errores y alertas rápidas.
+// No interrumpe al usuario ni necesita que haga clic en ningún botón.
 function toast(msg, dur=2600) { const e=document.getElementById('toast-el'); e.textContent=msg; e.classList.add('show'); setTimeout(()=>e.classList.remove('show'),dur); }
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 function accessDeniedBlock(feature) { return `<div class="access-denied"><i class="ti ti-lock" style="font-size:20px;display:block;margin-bottom:6px"></i><strong>Acceso restringido</strong><br>Tu rol (${currentUser.dept}) no tiene acceso a ${feature}.</div>`; }
 
+
+// Actualiza los contadores visuales del menú lateral:
+// el badge rojo de notificaciones sin leer y el de certificados pendientes.
+// Se llama cada vez que cambia el estado de algo importante.
 function updateBadges() {
   const un = DB.notificaciones.filter(n=>!n.leido).length;
   const cp = DB.certificados.filter(c=>c.estado==='pendiente').length;
@@ -1119,6 +1187,11 @@ function updateBadges() {
   if(nd) nd.style.display = un>0?'block':'none';
 }
 
+
+// Crea una nueva notificación interna y la agrega al inicio de la lista.
+// Recibe: tipo, ícono, color de fondo, color de ícono y mensaje.
+// Se llama automáticamente cuando ocurre algo relevante: un certificado rechazado,
+// una OP bloqueada, una compra registrada, etc.
 function addNotif(tipo,icono,bg,ic,msg) {
   DB.notificaciones.unshift({id:'n'+Date.now(),tipo,icono,bg,ic,msg,tiempo:'Ahora mismo',leido:false});
   updateBadges();
@@ -1127,6 +1200,11 @@ function addNotif(tipo,icono,bg,ic,msg) {
 // ============================================================
 // DASHBOARD
 // ============================================================
+
+// Genera el HTML del dashboard principal.
+// Calcula los KPIs en tiempo real desde el objeto DB: lotes disponibles,
+// OPs activas, certificados pendientes, OPs retrasadas.
+// Los números cambian automáticamente cuando cambia cualquier dato.
 function tplDashboard() {
   const retrasadasNum = DB.ops.filter(o=>estaOpRetrasada(o)).length;
   return `
@@ -1283,6 +1361,10 @@ function markAllRead() { DB.notificaciones.forEach(n=>n.leido=true); updateBadge
 // ============================================================
 // RECEPCIÓN
 // ============================================================
+
+// Módulo de Logística: muestra la tabla de lotes recibidos en bodega.
+// Cada lote muestra su estado (en cuarentena, disponible, bloqueado)
+// y el estado del certificado MTR asociado. Solo Logística y Admin pueden ver esto.
 function tplRecepcion() {
   if (!can('canReleaseLote') && currentUser.rol!=='admin') return accessDeniedBlock('Recepción de materiales');
   const rows = DB.lotes.map(l=>{
@@ -1310,6 +1392,10 @@ function tplRecepcion() {
   </div>`;
 }
 
+
+// Libera un lote que estaba en cuarentena, moviéndolo a estado "disponible".
+// Valida primero que el certificado asociado esté validado.
+// Si el certificado está rechazado, no permite la liberación y muestra un error.
 function marcarDisponible(id) {
   const lote=DB.lotes.find(l=>l.id===id);
   const cert=DB.certificados.find(c=>c.lote_id===id);
@@ -1326,6 +1412,10 @@ function marcarDisponible(id) {
 
 // registrarRecepcion moved to new dual-mode section
 
+
+// Genera la vista del inventario de materiales.
+// Muestra todos los lotes con su cantidad disponible, proveedor y estado.
+// Permite registrar salidas de material y filtrar por descripción.
 function tplStock(filter) {
   const f=filter||'';
   const rows=(f?DB.lotes.filter(l=>l.estado===f):DB.lotes).map(l=>`<tr>
@@ -1838,6 +1928,10 @@ function libBadge(lc) {
     : `<span class="badge br"><i class="ti ti-lock"></i> Rechazada</span>`;
 }
 
+
+// Módulo de Calidad: gestión de piezas producidas.
+// Las piezas entran con estado "pendiente_inspeccion".
+// El inspector puede liberarlas (aprobadas) o rechazarlas con justificación.
 function tplCalidad() {
   if(!currentPerm.pages.includes('calidad')) return accessDeniedBlock('Módulo de Calidad');
   const tienePermisoValidar = can('canValidateCert');
@@ -2125,6 +2219,12 @@ function reversarDecisionCert(id) {
   renderPage(currentPage);
 }
 
+
+// Gestiona la validación o rechazo de certificados MTR/MPA.
+// Si el estado es "rechazado": bloquea el lote asociado y todas las OPs que lo usan,
+// genera notificación automática a todas las áreas afectadas.
+// Si es "validado": mueve el lote de cuarentena a disponible.
+// Esta es una de las funciones más críticas del flujo de trazabilidad.
 function validarCert(id,estado) {
   if(!can('canValidateCert')){ denied(); return; }
   const c=DB.certificados.find(x=>x.id===id);
@@ -2539,6 +2639,10 @@ function tplSeguimiento() {
 // ============================================================
 // COMPRAS
 // ============================================================
+
+// Módulo de Compras: lista todas las Órdenes de Compra registradas.
+// Muestra número de OC, material, OP asociada, proveedor, estado y fecha.
+// Solo el rol de Compras y Admin pueden acceder a este módulo.
 function tplCompras() {
   var esC = currentUser.rol==='compras'||currentUser.rol==='admin';
   var rows = '';
@@ -2582,6 +2686,10 @@ function tplCompras() {
     +'</tr></thead><tbody id="cmp-tbody">'+rows+'</tbody></table></div></div>';
 }
 
+
+// Prepara y abre el formulario de nueva Orden de Compra.
+// Inicializa todos los campos del modal de compra en blanco.
+// El campo mtr_numero guarda el número de referencia del certificado del proveedor.
 function abrirNuevaCompra() {
   populateCmpOPs();
   document.getElementById('cmp-id').value='';
@@ -2653,6 +2761,10 @@ function eliminarCompra(id) {
   toast('🗑️ Orden eliminada.'); renderPage('compras');
 }
 
+
+// Guarda una nueva Orden de Compra o actualiza una existente en DB.compras_items.
+// Lee todos los campos del formulario, valida que estén completos
+// y agrega el registro con la fecha actual y el nombre del usuario que la creó.
 function guardarCompra() {
   if(!can('canCompras')){denied();return;}
   var editId=document.getElementById('cmp-id').value;
@@ -3596,6 +3708,10 @@ function eliminarHallazgo(audId,hallId) {
 let hrMedicionesIng = [];
 let ingOpItems = [];
 
+
+// Módulo de Ingeniería: muestra las Órdenes de Producción con su estado,
+// área, prioridad, semáforo de avance y fechas.
+// Permite crear nuevas OPs, editarlas y cerrarlas cuando se completan.
 function tplIngenieria() {
   if(!currentPerm.pages.includes('ingenieria')) return accessDeniedBlock('Módulo de Ingeniería');
   const esIng = can('canIngenieria') || can('canCreateOP');
@@ -3975,6 +4091,10 @@ const SOL_ESTADO_BADGE = {
   rechazado:   '<span class="badge br"><i class="ti ti-shield-x"></i> Rechazado</span>',
 };
 
+
+// Módulo de Soldadura: registros de procesos de unión.
+// Soporta 5 tipos: SMAW, GMAW, TIG, FCAW y SAW.
+// Cada registro guarda el operario, los parámetros técnicos y puede tener fotos adjuntas.
 function tplSoldadura() {
   if(!currentPerm.pages.includes('soldadura')) return accessDeniedBlock('Módulo de Soldadura');
 
